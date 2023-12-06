@@ -1834,8 +1834,8 @@ _Updated at ${new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angele
             // Delete stale comments
             for (const comment of commentsResponse.data) {
                 if ((_c = comment.body) === null || _c === void 0 ? void 0 : _c.includes(prefixHeader)) {
-                    core.info(`deleting comment ${comment.id}`);
-                    yield minimizeComment(comment.id);
+                    core.info(`minimizing comment ${comment.id}`);
+                    yield minimizeComment(comment.node_id);
                 }
             }
             octokit.rest.issues.createComment({

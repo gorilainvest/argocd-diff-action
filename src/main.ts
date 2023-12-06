@@ -28,7 +28,7 @@ let repoUrl = core.getInput('repo-url');
 
 const octokit = github.getOctokit(githubToken);
 
-async function minimizeComment(commentId: number): Promise<void> {
+async function minimizeComment(commentId: string): Promise<void> {
   const mutation = `
     mutation {
       minimizeComment(input: {subjectId: ${commentId}, classifier: OUTDATED}) {
@@ -177,8 +177,8 @@ _Updated at ${new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angele
     // Delete stale comments
     for (const comment of commentsResponse.data) {
       if (comment.body?.includes(prefixHeader)) {
-        core.info(`deleting comment ${comment.id}`);
-        await minimizeComment(comment.id);
+        core.info(`minimizing comment ${comment.id}`);
+        await minimizeComment(comment.node_id);
       }
     }
     octokit.rest.issues.createComment({
