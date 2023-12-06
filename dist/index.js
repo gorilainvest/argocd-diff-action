@@ -1825,12 +1825,11 @@ function asyncForEach(array, callback) {
     });
 }
 function run() {
-    var _a;
     return __awaiter(this, void 0, void 0, function* () {
         if (!repoUrl) {
             core.info('No repo-url provided, fetching from GitHub API');
-            const repoName = (_a = process.env.REPO_NAME, (_a !== null && _a !== void 0 ? _a : ''));
-            const [owner, repo] = repoName.split('/');
+            const repo = github.context.repo.repo;
+            const owner = github.context.repo.owner;
             const response = yield octokit.rest.repos.get({ owner, repo });
             repoUrl = response.data.ssh_url;
         }

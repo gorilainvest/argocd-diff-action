@@ -174,8 +174,8 @@ async function asyncForEach<T>(
 async function run(): Promise<void> {
   if (!repoUrl) {
     core.info('No repo-url provided, fetching from GitHub API');
-    const repoName = process.env.REPO_NAME ?? '';
-    const [owner, repo] = repoName.split('/');
+    const repo = github.context.repo.repo;
+    const owner = github.context.repo.owner;
     const response = await octokit.rest.repos.get({ owner, repo });
     repoUrl = response.data.ssh_url;
   }
