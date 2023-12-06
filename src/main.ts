@@ -208,7 +208,7 @@ async function run(): Promise<void> {
     const response = await octokit.rest.repos.get({ owner, repo });
     repoUrl = response.data.ssh_url;
   }
-  core.info(`Only apps matching repoUrl:{repoUrl} will be diffed`);
+  core.info(`Only apps matching repoUrl:${repoUrl} will be diffed`);
   const argocd = await setupArgoCDCommand();
   const apps = await getApps(argocd);
 
