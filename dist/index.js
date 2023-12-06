@@ -1704,7 +1704,7 @@ function minimizeComment(commentId) {
     return __awaiter(this, void 0, void 0, function* () {
         const mutation = `
     mutation {
-      minimizeComment(input: {subjectId: ${commentId}, classifier: OUTDATED}) {
+      minimizeComment(input: {subjectId: "${commentId}", classifier: OUTDATED}) {
         clientMutationId
       }
     }
