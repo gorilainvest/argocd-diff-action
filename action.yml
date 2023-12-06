@@ -1,6 +1,6 @@
 name: 'ArgoCD Diff'
 description: 'Diffs all ArgoCD apps in the repo, and provides the diff as a PR comment'
-author: 'Quizlet'
+author: 'gorilainvest'
 inputs:
   argocd-server-url: 
     description: ArgoCD server url (without the protocol)
@@ -27,6 +27,10 @@ inputs:
   environment: 
     description: Name of env to use in the diff title posted to the PR
     default: legacy
+    required: false
+  concurrency: 
+    description: The concurrency level that argocd cli can be used
+    default: '1'
     required: false
 runs:
   using: 'node20'

@@ -5,6 +5,7 @@ import * as github from '@actions/github';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ArgoResponse, Convert } from './argoResponse';
+import pLimit from 'p-limit';
 
 interface ExecResult {
   err?: Error | undefined;
@@ -19,6 +20,8 @@ const ARGOCD_SERVER_URL = core.getInput('argocd-server-url');
 const ARGOCD_TOKEN = core.getInput('argocd-token');
 const VERSION = core.getInput('argocd-version');
 const PLAINTEXT = core.getInput('plaintext').toLowerCase() === 'true';
+const CONCURRENCY = core.getInput('concurrency');
+const argoRateLimit = pLimit(CONCURRENCY ? parseInt(CONCURRENCY) : 1);
 let EXTRA_CLI_ARGS = core.getInput('argocd-extra-cli-args');
 if (PLAINTEXT) {
   EXTRA_CLI_ARGS += ' --plaintext';
@@ -27,6 +30,13 @@ if (PLAINTEXT) {
 let repoUrl = core.getInput('repo-url');
 
 const octokit = github.getOctokit(githubToken);
+
+const legend = `| Legend | Status |
+| :---:  | :---   |
+| ✅     | The app is synced in ArgoCD, and diffs you see are solely from this PR. |
+| ⚠️      | The app is out-of-sync in ArgoCD, and the diffs you see include those changes plus any from this PR. |
+| 🛑     | There was an error generating the ArgoCD diffs due to changes in this PR. |
+`;
 
 async function minimizeComment(commentId: string): Promise<void> {
   const mutation = `
@@ -86,8 +96,10 @@ async function setupArgoCDCommand(): Promise<(params: string) => Promise<ExecRes
   core.info(`Download complete`);
 
   return async (params: string) =>
-    execCommand(
-      `${argoBinaryPath} ${params} --auth-token=${ARGOCD_TOKEN} --server=${ARGOCD_SERVER_URL} ${EXTRA_CLI_ARGS}`
+    argoRateLimit(async () =>
+      execCommand(
+        `${argoBinaryPath} ${params} --auth-token=${ARGOCD_TOKEN} --server=${ARGOCD_SERVER_URL} ${EXTRA_CLI_ARGS}`
+      )
     );
 }
 
@@ -157,14 +169,10 @@ ${diff}
 
   const prefixHeader = `## ArgoCD Diff`;
   const output = scrubSecrets(`${prefixHeader} for commit [\`${shortCommitSha}\`](${commitLink})
-_Updated at ${new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })} PT_
+_Updated at ${new Date().toLocaleString('pt-br', { timeZone: 'America/Sao_Paulo' })} GMT-3_ 
   ${diffOutput.join('\n')}
 
-| Legend | Status |
-| :---:  | :---   |
-| ✅     | The app is synced in ArgoCD, and diffs you see are solely from this PR. |
-| ⚠️      | The app is out-of-sync in ArgoCD, and the diffs you see include those changes plus any from this PR. |
-| 🛑     | There was an error generating the ArgoCD diffs due to changes in this PR. |
+${legend}
 `);
 
   // Only post a new comment when there are changes
@@ -190,15 +198,6 @@ _Updated at ${new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angele
   }
 }
 
-async function asyncForEach<T>(
-  array: T[],
-  callback: (item: T, i: number, arr: T[]) => Promise<void>
-): Promise<void> {
-  for (let index = 0; index < array.length; index++) {
-    await callback(array[index], index, array);
-  }
-}
-
 async function run(): Promise<void> {
   if (!repoUrl) {
     core.info('No repo-url provided, fetching from GitHub API');
@@ -207,6 +206,7 @@ async function run(): Promise<void> {
     const response = await octokit.rest.repos.get({ owner, repo });
     repoUrl = response.data.ssh_url;
   }
+  core.info(`Only apps matching repoUrl:{repoUrl} will be diffed`);
   const argocd = await setupArgoCDCommand();
   const apps = await getApps(argocd);
 
@@ -214,7 +214,7 @@ async function run(): Promise<void> {
 
   const diffs: Diff[] = [];
 
-  await asyncForEach(apps, async app => {
+  const diffJobs = apps.map(async app => {
     const command = `app diff ${app.metadata.name} --local=${app.spec.source.path}`;
     try {
       core.info(`Running: argocd ${command}`);
@@ -223,7 +223,7 @@ async function run(): Promise<void> {
       // https://github.com/argoproj/argo-cd/issues/3588
       await argocd(command);
     } catch (e) {
-      const res = e as ExecResult;
+      const res = (e as unknown) as ExecResult;
       core.info(`stdout: ${res.stdout}`);
       core.info(`stderr: ${res.stderr}`);
       if (res.stdout) {
@@ -232,11 +232,14 @@ async function run(): Promise<void> {
         diffs.push({
           app,
           diff: '',
-          error: e
+          error: res
         });
       }
     }
   });
+
+  await Promise.all(diffJobs);
+
   await postDiffComment(diffs);
   const diffsWithErrors = diffs.filter(d => d.error);
   if (diffsWithErrors.length) {
