@@ -1700,7 +1700,7 @@ if (PLAINTEXT) {
     EXTRA_CLI_ARGS += ' --plaintext';
 }
 const octokit = github.getOctokit(githubToken);
-function execCommand(command, options = {}) {
+function execCommand(command, options = { maxBuffer: 8192 * 1024 * 1024 }) {
     return __awaiter(this, void 0, void 0, function* () {
         const p = new Promise((done, failed) => __awaiter(this, void 0, void 0, function* () {
             child_process_1.exec(command, options, (err, stdout, stderr) => {

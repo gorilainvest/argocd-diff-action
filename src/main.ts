@@ -44,7 +44,10 @@ if (PLAINTEXT) {
 
 const octokit = github.getOctokit(githubToken);
 
-async function execCommand(command: string, options: ExecOptions = {}): Promise<ExecResult> {
+async function execCommand(
+  command: string,
+  options: ExecOptions = { maxBuffer: 8192 * 1024 * 1024 }
+): Promise<ExecResult> {
   const p = new Promise<ExecResult>(async (done, failed) => {
     exec(command, options, (err: ExecException | null, stdout: string, stderr: string): void => {
       const res: ExecResult = {
