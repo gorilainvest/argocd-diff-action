@@ -87,18 +87,27 @@ async function setupArgoCDCommand(): Promise<(params: string) => Promise<ExecRes
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getApps(argocd: any): Promise<App[]> {
-  const response = await argocd('app list --output=json');
-  core.info(response);
-  const responseJson = JSON.parse(response);
-  return (responseJson.items as App[]).filter(app => {
-    const targetPrimary =
-      app.spec.source.targetRevision === 'master' || app.spec.source.targetRevision === 'main';
-    return (
-      app.spec.source.repoURL.includes(
-        `${github.context.repo.owner}/${github.context.repo.repo}`
-      ) && targetPrimary
-    );
-  });
+  core.info('Listing applications...');
+  try {
+    const response = await argocd('app list --output=json');
+    core.info(response);
+    const responseJson = JSON.parse(response);
+    return (responseJson.items as App[]).filter(app => {
+      const targetPrimary =
+        app.spec.source.targetRevision === 'master' || app.spec.source.targetRevision === 'main';
+      return (
+        app.spec.source.repoURL.includes(
+          `${github.context.repo.owner}/${github.context.repo.repo}`
+        ) && targetPrimary
+      );
+    });
+  } catch (e) {
+    const res = e as ExecResult;
+    core.info("Couldn't list applications");
+    core.info(`stdout: ${res.stdout}`);
+    core.info(`stderr: ${res.stderr}`);
+    throw e;
+  }
 }
 
 interface Diff {
@@ -119,8 +128,8 @@ App: [\`${app.metadata.name}\`](https://${ARGOCD_SERVER_URL}/applications/${app.
 YAML generation: ${error ? ' Error 🛑' : 'Success 🟢'}
 App sync status: ${app.status.sync.status === 'Synced' ? 'Synced ✅' : 'Out of Sync ⚠️ '}
 ${
-      error
-        ? `
+  error
+    ? `
 **\`stderr:\`**
 \`\`\`
 ${error.stderr}
@@ -131,12 +140,12 @@ ${error.stderr}
 ${JSON.stringify(error.err)}
 \`\`\`
 `
-        : ''
-      }
+    : ''
+}
 
 ${
-      diff
-        ? `
+  diff
+    ? `
 <details>
 
 \`\`\`diff
@@ -145,8 +154,8 @@ ${diff}
 
 </details>
 `
-        : ''
-      }
+    : ''
+}
 ---
 `
   );
