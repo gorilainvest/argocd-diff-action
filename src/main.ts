@@ -71,6 +71,8 @@ function scrubSecrets(input: string): string {
   return output;
 }
 
+type Argo = (params: string) => ReturnType<typeof execCommand>;
+
 async function setupArgoCDCommand(): Promise<(params: string) => Promise<ExecResult>> {
   const argoBinaryPath = 'bin/argo';
   const url = `https://github.com/argoproj/argo-cd/releases/download/${VERSION}/argocd-${ARCH}-amd64`;
@@ -85,13 +87,12 @@ async function setupArgoCDCommand(): Promise<(params: string) => Promise<ExecRes
     );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getApps(argocd: any): Promise<App[]> {
+async function getApps(argocd: Argo): Promise<App[]> {
   core.info('Listing applications...');
   try {
     const response = await argocd('app list --output=json');
-    core.info(response);
-    const responseJson = JSON.parse(response);
+    core.info(response.stdout);
+    const responseJson = JSON.parse(response.stdout);
     return (responseJson.items as App[]).filter(app => {
       const targetPrimary =
         app.spec.source.targetRevision === 'master' || app.spec.source.targetRevision === 'main';
