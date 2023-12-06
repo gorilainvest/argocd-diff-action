@@ -1744,24 +1744,19 @@ function getApps(argocd) {
     return __awaiter(this, void 0, void 0, function* () {
         core.info('Listing applications...');
         try {
-            yield argocd('app list --output=json');
+            const res = yield argocd('app list --output=json');
+            const responseJson = JSON.parse(res.stdout);
+            return responseJson.filter(app => {
+                const targetPrimary = app.spec.source.targetRevision === 'master' || app.spec.source.targetRevision === 'main';
+                return (app.spec.source.repoURL.includes(`${github.context.repo.owner}/${github.context.repo.repo}`) && targetPrimary);
+            });
         }
         catch (e) {
             const res = e;
             core.debug(`stdout: ${res.stdout}`);
             core.debug(`stderr: ${res.stderr}`);
-            if (res.stdout) {
-                const responseJson = JSON.parse(res.stdout);
-                return responseJson.items.filter(app => {
-                    const targetPrimary = app.spec.source.targetRevision === 'master' || app.spec.source.targetRevision === 'main';
-                    return (app.spec.source.repoURL.includes(`${github.context.repo.owner}/${github.context.repo.repo}`) && targetPrimary);
-                });
-            }
-            else {
-                throw e;
-            }
+            throw e;
         }
-        return [];
     });
 }
 function postDiffComment(diffs) {
