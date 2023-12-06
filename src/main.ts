@@ -4,6 +4,7 @@ import { exec, ExecException, ExecOptions } from 'child_process';
 import * as github from '@actions/github';
 import * as fs from 'fs';
 import * as path from 'path';
+import { ArgoResponse, Convert } from './argoResponse';
 
 interface ExecResult {
   err?: Error | undefined;
@@ -11,26 +12,8 @@ interface ExecResult {
   stderr: string;
 }
 
-interface App {
-  metadata: { name: string };
-  spec: {
-    source: {
-      repoURL: string;
-      path: string;
-      targetRevision: string;
-      kustomize: Object;
-      helm: Object;
-    };
-  };
-  status: {
-    sync: {
-      status: 'OutOfSync' | 'Synced';
-    };
-  };
-}
 const ARCH = process.env.ARCH || 'linux';
 const githubToken = core.getInput('github-token');
-core.info(githubToken);
 
 const ARGOCD_SERVER_URL = core.getInput('argocd-server-url');
 const ARGOCD_TOKEN = core.getInput('argocd-token');
@@ -41,6 +24,8 @@ let EXTRA_CLI_ARGS = core.getInput('argocd-extra-cli-args');
 if (PLAINTEXT) {
   EXTRA_CLI_ARGS += ' --plaintext';
 }
+
+let repoUrl = core.getInput('repo-url');
 
 const octokit = github.getOctokit(githubToken);
 
@@ -90,22 +75,12 @@ async function setupArgoCDCommand(): Promise<(params: string) => Promise<ExecRes
     );
 }
 
-async function getApps(argocd: Argo): Promise<App[]> {
+async function getApps(argocd: Argo): Promise<ArgoResponse[]> {
   core.info('Listing applications...');
   try {
-    const res = await argocd('app list --output=json');
-    const responseJson = JSON.parse(res.stdout);
-    core.debug(responseJson);
-    return (responseJson as App[]).filter(app => {
-      core.debug(JSON.stringify(app));
-      const targetPrimary =
-        app.spec.source.targetRevision === 'master' || app.spec.source.targetRevision === 'main';
-      return (
-        app.spec.source.repoURL.includes(
-          `${github.context.repo.owner}/${github.context.repo.repo}`
-        ) && targetPrimary
-      );
-    });
+    const res = await argocd(`app list --output=json --repo=${repoUrl}`);
+    const argoResponse = Convert.toArgoResponse(res.stdout);
+    return argoResponse;
   } catch (e) {
     const res = e as ExecResult;
     core.debug(`stdout: ${res.stdout}`);
@@ -115,7 +90,7 @@ async function getApps(argocd: Argo): Promise<App[]> {
 }
 
 interface Diff {
-  app: App;
+  app: ArgoResponse;
   diff: string;
   error?: ExecResult;
 }
@@ -197,8 +172,16 @@ async function asyncForEach<T>(
 }
 
 async function run(): Promise<void> {
+  if (!repoUrl) {
+    core.info('No repo-url provided, fetching from GitHub API');
+    const repoName = process.env.REPO_NAME ?? '';
+    const [owner, repo] = repoName.split('/');
+    const response = await octokit.rest.repos.get({ owner, repo });
+    repoUrl = response.data.ssh_url;
+  }
   const argocd = await setupArgoCDCommand();
   const apps = await getApps(argocd);
+
   core.info(`Found apps: ${apps.map(a => a.metadata.name).join(', ')}`);
 
   const diffs: Diff[] = [];
