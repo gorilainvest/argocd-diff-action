@@ -1746,6 +1746,7 @@ function getApps(argocd) {
         try {
             const res = yield argocd('app list --output=json');
             const responseJson = JSON.parse(res.stdout);
+            core.debug(`responseJson: ${JSON.stringify(res.stdout)}`);
             return responseJson.filter(app => {
                 const targetPrimary = app.spec.source.targetRevision === 'master' || app.spec.source.targetRevision === 'main';
                 return (app.spec.source.repoURL.includes(`${github.context.repo.owner}/${github.context.repo.repo}`) && targetPrimary);

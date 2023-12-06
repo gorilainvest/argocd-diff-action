@@ -95,6 +95,7 @@ async function getApps(argocd: Argo): Promise<App[]> {
   try {
     const res = await argocd('app list --output=json');
     const responseJson = JSON.parse(res.stdout);
+    core.debug(`responseJson: ${JSON.stringify(res.stdout)}`);
     return (responseJson as App[]).filter(app => {
       const targetPrimary =
         app.spec.source.targetRevision === 'master' || app.spec.source.targetRevision === 'main';
