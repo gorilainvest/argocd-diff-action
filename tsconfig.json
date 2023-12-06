@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "lib": ["ES2023"],
     "module": "commonjs",
     "target": "ES2022",
     "outDir": "./lib",

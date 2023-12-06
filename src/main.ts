@@ -5,7 +5,8 @@ import * as github from '@actions/github';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ArgoResponse, Convert } from './argoResponse';
-import pLimit from 'p-limit';
+import Bottleneck from "bottleneck";
+
 
 interface ExecResult {
   err?: Error | undefined;
@@ -21,7 +22,8 @@ const ARGOCD_TOKEN = core.getInput('argocd-token');
 const VERSION = core.getInput('argocd-version');
 const PLAINTEXT = core.getInput('plaintext').toLowerCase() === 'true';
 const CONCURRENCY = core.getInput('concurrency');
-const argoRateLimit = pLimit(CONCURRENCY ? parseInt(CONCURRENCY) : 1);
+const maxConcurrent = CONCURRENCY ? parseInt(CONCURRENCY) : 1;
+const argoRateLimiter = new Bottleneck({ maxConcurrent });
 let EXTRA_CLI_ARGS = core.getInput('argocd-extra-cli-args');
 if (PLAINTEXT) {
   EXTRA_CLI_ARGS += ' --plaintext';
@@ -96,7 +98,7 @@ async function setupArgoCDCommand(): Promise<(params: string) => Promise<ExecRes
   core.info(`Download complete`);
 
   return async (params: string) =>
-    argoRateLimit(async () =>
+    argoRateLimiter.schedule(async () =>
       execCommand(
         `${argoBinaryPath} ${params} --auth-token=${ARGOCD_TOKEN} --server=${ARGOCD_SERVER_URL} ${EXTRA_CLI_ARGS}`
       )
