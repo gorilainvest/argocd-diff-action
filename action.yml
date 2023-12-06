@@ -18,7 +18,7 @@ inputs:
     required: true
   argocd-extra-cli-args: 
     description: Extra arguments to pass to the argocd CLI
-    default: --grpc-web
+    default: ""
     required: false
   plaintext: 
     description: Whether to use HTTPS
