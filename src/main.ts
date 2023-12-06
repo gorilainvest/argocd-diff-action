@@ -88,6 +88,7 @@ async function setupArgoCDCommand(): Promise<(params: string) => Promise<ExecRes
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getApps(argocd: any): Promise<App[]> {
   const response = await argocd('app list --output=json');
+  core.info(response);
   const responseJson = JSON.parse(response);
   return (responseJson.items as App[]).filter(app => {
     const targetPrimary =
