@@ -31,7 +31,7 @@ const octokit = github.getOctokit(githubToken);
 async function minimizeComment(commentId: number): Promise<void> {
   const mutation = `
     mutation {
-      minimizeComment(input: {subjectId: "${commentId}", classifier: OUTDATED}) {
+      minimizeComment(input: {subjectId: ${commentId}, classifier: OUTDATED}) {
         clientMutationId
       }
     }
