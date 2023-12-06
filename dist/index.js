@@ -1680,9 +1680,6 @@ var __importStar = (this && this.__importStar) || function (mod) {
     result["default"] = mod;
     return result;
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 const core = __importStar(__webpack_require__(470));
 const tc = __importStar(__webpack_require__(533));
@@ -1690,7 +1687,6 @@ const child_process_1 = __webpack_require__(129);
 const github = __importStar(__webpack_require__(469));
 const fs = __importStar(__webpack_require__(747));
 const path = __importStar(__webpack_require__(622));
-const node_fetch_1 = __importDefault(__webpack_require__(454));
 const ARCH = process.env.ARCH || 'linux';
 const githubToken = core.getInput('github-token');
 core.info(githubToken);
@@ -1698,7 +1694,7 @@ const ARGOCD_SERVER_URL = core.getInput('argocd-server-url');
 const ARGOCD_TOKEN = core.getInput('argocd-token');
 const VERSION = core.getInput('argocd-version');
 const ENV = core.getInput('environment');
-const PLAINTEXT = core.getInput('plaintext').toLowerCase() === "true";
+const PLAINTEXT = core.getInput('plaintext').toLowerCase() === 'true';
 let EXTRA_CLI_ARGS = core.getInput('argocd-extra-cli-args');
 if (PLAINTEXT) {
     EXTRA_CLI_ARGS += ' --plaintext';
@@ -1734,34 +1730,21 @@ function scrubSecrets(input) {
 function setupArgoCDCommand() {
     return __awaiter(this, void 0, void 0, function* () {
         const argoBinaryPath = 'bin/argo';
-        yield tc.downloadTool(`https://github.com/argoproj/argo-cd/releases/download/${VERSION}/argocd-${ARCH}-amd64`, argoBinaryPath);
+        const url = `https://github.com/argoproj/argo-cd/releases/download/${VERSION}/argocd-${ARCH}-amd64`;
+        core.info(`Downloading argo cli from: ${url}`);
+        yield tc.downloadTool(url, argoBinaryPath);
         fs.chmodSync(path.join(argoBinaryPath), '755');
-        // core.addPath(argoBinaryPath);
+        core.info(`Download complete`);
         return (params) => __awaiter(this, void 0, void 0, function* () {
             return execCommand(`${argoBinaryPath} ${params} --auth-token=${ARGOCD_TOKEN} --server=${ARGOCD_SERVER_URL} ${EXTRA_CLI_ARGS}`);
         });
     });
 }
-function getApps() {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getApps(argocd) {
     return __awaiter(this, void 0, void 0, function* () {
-        let protocol = 'https';
-        if (PLAINTEXT) {
-            protocol = 'http';
-        }
-        const url = `${protocol}://${ARGOCD_SERVER_URL}/api/v1/applications`;
-        core.info(`Fetching apps from: ${url}`);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let responseJson;
-        try {
-            const response = yield node_fetch_1.default(url, {
-                method: 'GET',
-                headers: { Cookie: `argocd.token=${ARGOCD_TOKEN}` }
-            });
-            responseJson = yield response.json();
-        }
-        catch (e) {
-            core.error(e);
-        }
+        const response = yield argocd('app list --output=json');
+        const responseJson = JSON.parse(response);
         return responseJson.items.filter(app => {
             const targetPrimary = app.spec.source.targetRevision === 'master' || app.spec.source.targetRevision === 'main';
             return (app.spec.source.repoURL.includes(`${github.context.repo.owner}/${github.context.repo.repo}`) && targetPrimary);
@@ -1838,7 +1821,7 @@ function asyncForEach(array, callback) {
 function run() {
     return __awaiter(this, void 0, void 0, function* () {
         const argocd = yield setupArgoCDCommand();
-        const apps = yield getApps();
+        const apps = yield getApps(argocd);
         core.info(`Found apps: ${apps.map(a => a.metadata.name).join(', ')}`);
         const diffs = [];
         yield asyncForEach(apps, (app) => __awaiter(this, void 0, void 0, function* () {
