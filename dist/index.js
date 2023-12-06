@@ -589,8 +589,8 @@ async function execCommand(command, options = { maxBuffer: 8192 * 1024 * 1024 })
     const p = new Promise(async (done, failed) => {
         (0, child_process_1.exec)(command, options, (err, stdout, stderr) => {
             const res = {
-                stdout,
-                stderr
+                stdout: scrubSecrets(stdout),
+                stderr: scrubSecrets(stderr)
             };
             if (err) {
                 res.err = err;
@@ -617,7 +617,11 @@ async function setupArgoCDCommand() {
     await tc.downloadTool(url, argoBinaryPath);
     fs.chmodSync(path.join(argoBinaryPath), '755');
     core.info(`Download complete`);
-    return async (params) => argoRateLimiter.schedule(async () => execCommand(`${argoBinaryPath} ${params} --auth-token=${ARGOCD_TOKEN} --server=${ARGOCD_SERVER_URL} ${EXTRA_CLI_ARGS}`));
+    return async (params) => argoRateLimiter.schedule(async () => {
+        const command = `${argoBinaryPath} ${params} --auth-token=${ARGOCD_TOKEN} --server=${ARGOCD_SERVER_URL} ${EXTRA_CLI_ARGS}`;
+        core.info(`Running: argocd ${command}`);
+        return execCommand(command);
+    });
 }
 async function getApps(argocd) {
     core.info('Listing applications...');
@@ -714,7 +718,6 @@ async function run() {
     const diffJobs = apps.map(async (app) => {
         const command = `app diff ${app.metadata.name} --local=${app.spec.source.path}`;
         try {
-            core.info(`Running: argocd ${command}`);
             // ArgoCD app diff will exit 1 if there is a diff, so always catch,
             // and then consider it a success if there's a diff in stdout
             // https://github.com/argoproj/argo-cd/issues/3588
