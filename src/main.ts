@@ -4,7 +4,6 @@ import { exec, ExecException, ExecOptions } from 'child_process';
 import * as github from '@actions/github';
 import * as fs from 'fs';
 import * as path from 'path';
-import nodeFetch from 'node-fetch';
 
 interface ExecResult {
   err?: Error | undefined;
@@ -37,7 +36,7 @@ const ARGOCD_SERVER_URL = core.getInput('argocd-server-url');
 const ARGOCD_TOKEN = core.getInput('argocd-token');
 const VERSION = core.getInput('argocd-version');
 const ENV = core.getInput('environment');
-const PLAINTEXT = core.getInput('plaintext').toLowerCase() === "true";
+const PLAINTEXT = core.getInput('plaintext').toLowerCase() === 'true';
 let EXTRA_CLI_ARGS = core.getInput('argocd-extra-cli-args');
 if (PLAINTEXT) {
   EXTRA_CLI_ARGS += ' --plaintext';
@@ -74,13 +73,11 @@ function scrubSecrets(input: string): string {
 
 async function setupArgoCDCommand(): Promise<(params: string) => Promise<ExecResult>> {
   const argoBinaryPath = 'bin/argo';
-  await tc.downloadTool(
-    `https://github.com/argoproj/argo-cd/releases/download/${VERSION}/argocd-${ARCH}-amd64`,
-    argoBinaryPath
-  );
+  const url = `https://github.com/argoproj/argo-cd/releases/download/${VERSION}/argocd-${ARCH}-amd64`;
+  core.info(`Downloading argo cli from: ${url}`);
+  await tc.downloadTool(url, argoBinaryPath);
   fs.chmodSync(path.join(argoBinaryPath), '755');
-
-  // core.addPath(argoBinaryPath);
+  core.info(`Download complete`);
 
   return async (params: string) =>
     execCommand(
@@ -88,27 +85,13 @@ async function setupArgoCDCommand(): Promise<(params: string) => Promise<ExecRes
     );
 }
 
-async function getApps(): Promise<App[]> {
-  let protocol = 'https';
-  if (PLAINTEXT) {
-    protocol = 'http';
-  }
-  const url = `${protocol}://${ARGOCD_SERVER_URL}/api/v1/applications`;
-  core.info(`Fetching apps from: ${url}`);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let responseJson: any;
-  try {
-    const response = await nodeFetch(url, {
-      method: 'GET',
-      headers: { Cookie: `argocd.token=${ARGOCD_TOKEN}` }
-    });
-    responseJson = await response.json();
-  } catch (e) {
-    core.error(e);
-  }
-
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getApps(argocd: any): Promise<App[]> {
+  const response = await argocd('app list --output=json');
+  const responseJson = JSON.parse(response);
   return (responseJson.items as App[]).filter(app => {
-    const targetPrimary = app.spec.source.targetRevision === 'master' || app.spec.source.targetRevision === 'main'
+    const targetPrimary =
+      app.spec.source.targetRevision === 'master' || app.spec.source.targetRevision === 'main';
     return (
       app.spec.source.repoURL.includes(
         `${github.context.repo.owner}/${github.context.repo.repo}`
@@ -201,7 +184,7 @@ async function asyncForEach<T>(
 
 async function run(): Promise<void> {
   const argocd = await setupArgoCDCommand();
-  const apps = await getApps();
+  const apps = await getApps(argocd);
   core.info(`Found apps: ${apps.map(a => a.metadata.name).join(', ')}`);
 
   const diffs: Diff[] = [];
