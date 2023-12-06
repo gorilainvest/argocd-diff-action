@@ -1693,7 +1693,6 @@ const githubToken = core.getInput('github-token');
 const ARGOCD_SERVER_URL = core.getInput('argocd-server-url');
 const ARGOCD_TOKEN = core.getInput('argocd-token');
 const VERSION = core.getInput('argocd-version');
-const ENV = core.getInput('environment');
 const PLAINTEXT = core.getInput('plaintext').toLowerCase() === 'true';
 let EXTRA_CLI_ARGS = core.getInput('argocd-extra-cli-args');
 if (PLAINTEXT) {
@@ -1701,6 +1700,25 @@ if (PLAINTEXT) {
 }
 let repoUrl = core.getInput('repo-url');
 const octokit = github.getOctokit(githubToken);
+function minimizeComment(commentId) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const mutation = `
+    mutation {
+      minimizeComment(input: {subjectId: "${commentId}", classifier: OUTDATED}) {
+        clientMutationId
+      }
+    }
+  `;
+        try {
+            const response = yield octokit.graphql(mutation);
+            core.debug(JSON.stringify(response));
+            core.info('Previous comment minimized successfully');
+        }
+        catch (error) {
+            core.error(`Error minimizing comment: ${error}`);
+        }
+    });
+}
 function execCommand(command, options = { maxBuffer: 8192 * 1024 * 1024 }) {
     return __awaiter(this, void 0, void 0, function* () {
         const p = new Promise((done, failed) => __awaiter(this, void 0, void 0, function* () {
@@ -1758,7 +1776,7 @@ function getApps(argocd) {
     });
 }
 function postDiffComment(diffs) {
-    var _a, _b;
+    var _a, _b, _c;
     return __awaiter(this, void 0, void 0, function* () {
         const { owner, repo } = github.context.repo;
         const sha = (_b = (_a = github.context.payload.pull_request) === null || _a === void 0 ? void 0 : _a.head) === null || _b === void 0 ? void 0 : _b.sha;
@@ -1795,8 +1813,8 @@ ${diff}
             : ''}
 ---
 `);
-        const output = scrubSecrets(`
-## ArgoCD Diff on ${ENV} for commit [\`${shortCommitSha}\`](${commitLink})
+        const prefixHeader = `## ArgoCD Diff`;
+        const output = scrubSecrets(`${prefixHeader} for commit [\`${shortCommitSha}\`](${commitLink})
 _Updated at ${new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })} PT_
   ${diffOutput.join('\n')}
 
@@ -1808,6 +1826,18 @@ _Updated at ${new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angele
 `);
         // Only post a new comment when there are changes
         if (diffs.length) {
+            const commentsResponse = yield octokit.rest.issues.listComments({
+                issue_number: github.context.issue.number,
+                owner,
+                repo
+            });
+            // Delete stale comments
+            for (const comment of commentsResponse.data) {
+                if ((_c = comment.body) === null || _c === void 0 ? void 0 : _c.includes(prefixHeader)) {
+                    core.info(`deleting comment ${comment.id}`);
+                    yield minimizeComment(comment.id);
+                }
+            }
             octokit.rest.issues.createComment({
                 issue_number: github.context.issue.number,
                 owner,
@@ -1838,7 +1868,7 @@ function run() {
         core.info(`Found apps: ${apps.map(a => a.metadata.name).join(', ')}`);
         const diffs = [];
         yield asyncForEach(apps, (app) => __awaiter(this, void 0, void 0, function* () {
-            const command = `app diff ${app.metadata.name} --local=${app.spec.source.path}`;
+            const command = `app diff ${app.metadata.name} --local=${app.spec.source.path} --server-side-generate`;
             try {
                 core.info(`Running: argocd ${command}`);
                 // ArgoCD app diff will exit 1 if there is a diff, so always catch,
