@@ -535,15 +535,6 @@ var __importStar = (this && this.__importStar) || function (mod) {
     __setModuleDefault(result, mod);
     return result;
 };
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -576,43 +567,39 @@ const legend = `| Legend | Status |
 | ⚠️      | The app is out-of-sync in ArgoCD, and the diffs you see include those changes plus any from this PR. |
 | 🛑     | There was an error generating the ArgoCD diffs due to changes in this PR. |
 `;
-function minimizeComment(commentId) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const mutation = `
+async function minimizeComment(commentId) {
+    const mutation = `
     mutation {
       minimizeComment(input: {subjectId: "${commentId}", classifier: OUTDATED}) {
         clientMutationId
       }
     }
   `;
-        try {
-            const response = yield octokit.graphql(mutation);
-            core.debug(JSON.stringify(response));
-            core.info('Previous comment minimized successfully');
-        }
-        catch (error) {
-            core.error(`Error minimizing comment: ${error}`);
-        }
-    });
+    try {
+        const response = await octokit.graphql(mutation);
+        core.debug(JSON.stringify(response));
+        core.info('Previous comment minimized successfully');
+    }
+    catch (error) {
+        core.error(`Error minimizing comment: ${error}`);
+    }
 }
-function execCommand(command, options = { maxBuffer: 8192 * 1024 * 1024 }) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const p = new Promise((done, failed) => __awaiter(this, void 0, void 0, function* () {
-            (0, child_process_1.exec)(command, options, (err, stdout, stderr) => {
-                const res = {
-                    stdout,
-                    stderr
-                };
-                if (err) {
-                    res.err = err;
-                    failed(res);
-                    return;
-                }
-                done(res);
-            });
-        }));
-        return yield p;
+async function execCommand(command, options = { maxBuffer: 8192 * 1024 * 1024 }) {
+    const p = new Promise(async (done, failed) => {
+        (0, child_process_1.exec)(command, options, (err, stdout, stderr) => {
+            const res = {
+                stdout,
+                stderr
+            };
+            if (err) {
+                res.err = err;
+                failed(res);
+                return;
+            }
+            done(res);
+        });
     });
+    return await p;
 }
 function scrubSecrets(input) {
     let output = input;
@@ -622,50 +609,40 @@ function scrubSecrets(input) {
     }
     return output;
 }
-function setupArgoCDCommand() {
-    return __awaiter(this, void 0, void 0, function* () {
-        const argoBinaryPath = 'bin/argo';
-        const url = `https://github.com/argoproj/argo-cd/releases/download/${VERSION}/argocd-${ARCH}-amd64`;
-        core.info(`Downloading argo cli from: ${url}`);
-        yield tc.downloadTool(url, argoBinaryPath);
-        fs.chmodSync(path.join(argoBinaryPath), '755');
-        core.info(`Download complete`);
-        return (params) => __awaiter(this, void 0, void 0, function* () {
-            return argoRateLimit(() => __awaiter(this, void 0, void 0, function* () {
-                return execCommand(`${argoBinaryPath} ${params} --auth-token=${ARGOCD_TOKEN} --server=${ARGOCD_SERVER_URL} ${EXTRA_CLI_ARGS}`);
-            }));
-        });
-    });
+async function setupArgoCDCommand() {
+    const argoBinaryPath = 'bin/argo';
+    const url = `https://github.com/argoproj/argo-cd/releases/download/${VERSION}/argocd-${ARCH}-amd64`;
+    core.info(`Downloading argo cli from: ${url}`);
+    await tc.downloadTool(url, argoBinaryPath);
+    fs.chmodSync(path.join(argoBinaryPath), '755');
+    core.info(`Download complete`);
+    return async (params) => argoRateLimit(async () => execCommand(`${argoBinaryPath} ${params} --auth-token=${ARGOCD_TOKEN} --server=${ARGOCD_SERVER_URL} ${EXTRA_CLI_ARGS}`));
 }
-function getApps(argocd) {
-    return __awaiter(this, void 0, void 0, function* () {
-        core.info('Listing applications...');
-        try {
-            const res = yield argocd(`app list --output=json --repo=${repoUrl}`);
-            const argoResponse = argoResponse_1.Convert.toArgoResponse(res.stdout);
-            return argoResponse;
-        }
-        catch (e) {
-            const res = e;
-            core.debug(`stdout: ${res.stdout}`);
-            core.debug(`stderr: ${res.stderr}`);
-            throw e;
-        }
-    });
+async function getApps(argocd) {
+    core.info('Listing applications...');
+    try {
+        const res = await argocd(`app list --output=json --repo=${repoUrl}`);
+        const argoResponse = argoResponse_1.Convert.toArgoResponse(res.stdout);
+        return argoResponse;
+    }
+    catch (e) {
+        const res = e;
+        core.debug(`stdout: ${res.stdout}`);
+        core.debug(`stderr: ${res.stderr}`);
+        throw e;
+    }
 }
-function postDiffComment(diffs) {
-    var _a, _b, _c;
-    return __awaiter(this, void 0, void 0, function* () {
-        const { owner, repo } = github.context.repo;
-        const sha = (_b = (_a = github.context.payload.pull_request) === null || _a === void 0 ? void 0 : _a.head) === null || _b === void 0 ? void 0 : _b.sha;
-        const commitLink = `https://github.com/${owner}/${repo}/pull/${github.context.issue.number}/commits/${sha}`;
-        const shortCommitSha = String(sha).substr(0, 7);
-        const diffOutput = diffs.map(({ app, diff, error }) => `   
+async function postDiffComment(diffs) {
+    const { owner, repo } = github.context.repo;
+    const sha = github.context.payload.pull_request?.head?.sha;
+    const commitLink = `https://github.com/${owner}/${repo}/pull/${github.context.issue.number}/commits/${sha}`;
+    const shortCommitSha = String(sha).substr(0, 7);
+    const diffOutput = diffs.map(({ app, diff, error }) => `   
 App: [\`${app.metadata.name}\`](https://${ARGOCD_SERVER_URL}/applications/${app.metadata.name}) 
 YAML generation: ${error ? ' Error 🛑' : 'Success 🟢'}
 App sync status: ${app.status.sync.status === 'Synced' ? 'Synced ✅' : 'Out of Sync ⚠️ '}
 ${error
-            ? `
+        ? `
 **\`stderr:\`**
 \`\`\`
 ${error.stderr}
@@ -676,10 +653,10 @@ ${error.stderr}
 ${JSON.stringify(error.err)}
 \`\`\`
 `
-            : ''}
+        : ''}
 
 ${diff
-            ? `
+        ? `
 <details>
 
 \`\`\`diff
@@ -688,85 +665,82 @@ ${diff}
 
 </details>
 `
-            : ''}
+        : ''}
 ---
 `);
-        const prefixHeader = `## ArgoCD Diff`;
-        const output = scrubSecrets(`${prefixHeader} for commit [\`${shortCommitSha}\`](${commitLink})
+    const prefixHeader = `## ArgoCD Diff`;
+    const output = scrubSecrets(`${prefixHeader} for commit [\`${shortCommitSha}\`](${commitLink})
 _Updated at ${new Date().toLocaleString('pt-br', { timeZone: 'America/Sao_Paulo' })} GMT-3_ 
   ${diffOutput.join('\n')}
 
 ${legend}
 `);
-        // Only post a new comment when there are changes
-        if (diffs.length) {
-            const commentsResponse = yield octokit.rest.issues.listComments({
-                issue_number: github.context.issue.number,
-                owner,
-                repo
-            });
-            // Delete stale comments
-            for (const comment of commentsResponse.data) {
-                if ((_c = comment.body) === null || _c === void 0 ? void 0 : _c.includes(prefixHeader)) {
-                    core.info(`minimizing comment ${comment.id}`);
-                    yield minimizeComment(comment.node_id);
-                }
+    // Only post a new comment when there are changes
+    if (diffs.length) {
+        const commentsResponse = await octokit.rest.issues.listComments({
+            issue_number: github.context.issue.number,
+            owner,
+            repo
+        });
+        // Delete stale comments
+        for (const comment of commentsResponse.data) {
+            if (comment.body?.includes(prefixHeader)) {
+                core.info(`minimizing comment ${comment.id}`);
+                await minimizeComment(comment.node_id);
             }
-            octokit.rest.issues.createComment({
-                issue_number: github.context.issue.number,
-                owner,
-                repo,
-                body: output
-            });
         }
-    });
+        octokit.rest.issues.createComment({
+            issue_number: github.context.issue.number,
+            owner,
+            repo,
+            body: output
+        });
+    }
 }
-function run() {
-    return __awaiter(this, void 0, void 0, function* () {
-        if (!repoUrl) {
-            core.info('No repo-url provided, fetching from GitHub API');
-            const repo = github.context.repo.repo;
-            const owner = github.context.repo.owner;
-            const response = yield octokit.rest.repos.get({ owner, repo });
-            repoUrl = response.data.ssh_url;
+async function run() {
+    if (!repoUrl) {
+        core.info('No repo-url provided, fetching from GitHub API');
+        const repo = github.context.repo.repo;
+        const owner = github.context.repo.owner;
+        const response = await octokit.rest.repos.get({ owner, repo });
+        repoUrl = response.data.ssh_url;
+    }
+    core.info(`Only apps matching repoUrl:{repoUrl} will be diffed`);
+    const argocd = await setupArgoCDCommand();
+    const apps = await getApps(argocd);
+    core.info(`Found apps: ${apps.map(a => a.metadata.name).join(', ')}`);
+    const diffs = [];
+    const diffJobs = apps.map(async (app) => {
+        const command = `app diff ${app.metadata.name} --local=${app.spec.source.path}`;
+        try {
+            core.info(`Running: argocd ${command}`);
+            // ArgoCD app diff will exit 1 if there is a diff, so always catch,
+            // and then consider it a success if there's a diff in stdout
+            // https://github.com/argoproj/argo-cd/issues/3588
+            await argocd(command);
         }
-        core.info(`Only apps matching repoUrl:{repoUrl} will be diffed`);
-        const argocd = yield setupArgoCDCommand();
-        const apps = yield getApps(argocd);
-        core.info(`Found apps: ${apps.map(a => a.metadata.name).join(', ')}`);
-        const diffs = [];
-        const diffJobs = apps.map((app) => __awaiter(this, void 0, void 0, function* () {
-            const command = `app diff ${app.metadata.name} --local=${app.spec.source.path}`;
-            try {
-                core.info(`Running: argocd ${command}`);
-                // ArgoCD app diff will exit 1 if there is a diff, so always catch,
-                // and then consider it a success if there's a diff in stdout
-                // https://github.com/argoproj/argo-cd/issues/3588
-                yield argocd(command);
+        catch (e) {
+            const res = e;
+            core.info(`stdout: ${res.stdout}`);
+            core.info(`stderr: ${res.stderr}`);
+            if (res.stdout) {
+                diffs.push({ app, diff: res.stdout });
             }
-            catch (e) {
-                const res = e;
-                core.info(`stdout: ${res.stdout}`);
-                core.info(`stderr: ${res.stderr}`);
-                if (res.stdout) {
-                    diffs.push({ app, diff: res.stdout });
-                }
-                else {
-                    diffs.push({
-                        app,
-                        diff: '',
-                        error: res
-                    });
-                }
+            else {
+                diffs.push({
+                    app,
+                    diff: '',
+                    error: res
+                });
             }
-        }));
-        yield Promise.all(diffJobs);
-        yield postDiffComment(diffs);
-        const diffsWithErrors = diffs.filter(d => d.error);
-        if (diffsWithErrors.length) {
-            core.setFailed(`ArgoCD diff failed: Encountered ${diffsWithErrors.length} errors`);
         }
     });
+    await Promise.all(diffJobs);
+    await postDiffComment(diffs);
+    const diffsWithErrors = diffs.filter(d => d.error);
+    if (diffsWithErrors.length) {
+        core.setFailed(`ArgoCD diff failed: Encountered ${diffsWithErrors.length} errors`);
+    }
 }
 run().catch(e => core.setFailed(e.message));
 
