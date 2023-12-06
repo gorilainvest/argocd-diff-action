@@ -90,25 +90,27 @@ async function setupArgoCDCommand(): Promise<(params: string) => Promise<ExecRes
 async function getApps(argocd: Argo): Promise<App[]> {
   core.info('Listing applications...');
   try {
-    const response = await argocd('app list --output=json');
-    core.info(response.stdout);
-    const responseJson = JSON.parse(response.stdout);
-    return (responseJson.items as App[]).filter(app => {
-      const targetPrimary =
-        app.spec.source.targetRevision === 'master' || app.spec.source.targetRevision === 'main';
-      return (
-        app.spec.source.repoURL.includes(
-          `${github.context.repo.owner}/${github.context.repo.repo}`
-        ) && targetPrimary
-      );
-    });
+    await argocd('app list --output=json');
   } catch (e) {
     const res = e as ExecResult;
-    core.info("Couldn't list applications");
-    core.info(`stdout: ${res.stdout}`);
-    core.info(`stderr: ${res.stderr}`);
-    throw e;
+    core.debug(`stdout: ${res.stdout}`);
+    core.debug(`stderr: ${res.stderr}`);
+    if (res.stdout) {
+      const responseJson = JSON.parse(res.stdout);
+      return (responseJson.items as App[]).filter(app => {
+        const targetPrimary =
+          app.spec.source.targetRevision === 'master' || app.spec.source.targetRevision === 'main';
+        return (
+          app.spec.source.repoURL.includes(
+            `${github.context.repo.owner}/${github.context.repo.repo}`
+          ) && targetPrimary
+        );
+      });
+    } else {
+      throw e;
+    }
   }
+  return [];
 }
 
 interface Diff {
