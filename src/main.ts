@@ -4,7 +4,7 @@ import { exec, ExecException, ExecOptions } from 'child_process';
 import * as github from '@actions/github';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ArgoResponse, Convert } from './argoResponse';
+import { ArgoResponse } from './argoResponse';
 import Bottleneck from "bottleneck";
 
 
@@ -109,7 +109,7 @@ async function getApps(argocd: Argo): Promise<ArgoResponse[]> {
   core.info('Listing applications...');
   try {
     const res = await argocd(`app list --output=json --repo=${repoUrl}`);
-    const argoResponse = Convert.toArgoResponse(res.stdout);
+    const argoResponse = JSON.parse(res.stdout) as ArgoResponse[];
     return argoResponse;
   } catch (e) {
     const res = e as ExecResult;
